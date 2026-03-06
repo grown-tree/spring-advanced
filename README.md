@@ -175,6 +175,48 @@ Optional<Todo> findByIdWithUser(@Param("todoId") Long todoId);
 ---
 
 ## Lv 6. 내가 정의한 문제와 해결 과정
+## 🚀 트러블슈팅: 비밀번호 변경 로직의 검증 순서 개선
+### 1. 문제 인식 (Issue)
+
+- 상황: changePassword() 메서드에서 현재 비밀번호가 틀린 상태에서도 새 비밀번호 중복 여부를 먼저 검증하는 비효율적인 순서로 로직이 구성되어 있었음.
+- 기대 결과: 현재 비밀번호 인증을 먼저 통과한 사용자에게만 새 비밀번호 중복 체크를 수행해야 함.
+
+### 2. 원인 분석 (Analysis)
+
+- 코드 확인: 기존 코드에서 새 비밀번호 == 현재 비밀번호 체크가 현재 비밀번호 일치 여부 체크보다 먼저 실행되고 있었음.
+- 판단: 인증되지 않은 사용자가 새 비밀번호 중복 체크를 먼저 거치는 것은 논리적으로 맞지 않으며, 기본 인증을 먼저 수행하는 것이 올바른 흐름으로 판단됨.
+
+### 3. 해결 방안 및 구현 (Resolution)
+
+- 해결 로직: 두 if문의 순서를 변경하여 현재 비밀번호 인증을 먼저 수행하고, 인증 통과 후 새 비밀번호 중복 여부를 확인하도록 수정.
+
+#### 🛠 코드 수정 전/후 비교
+
+| 구분 | 수정 전 (Before) | 수정 후 (After) |
+| :--- | :--- | :--- |
+| **검증 순서** | 새 비밀번호 중복 체크 → 현재 비밀번호 인증 | 현재 비밀번호 인증 → 새 비밀번호 중복 체크 |
+| **논리 흐름** | 인증 전 중복 검사 수행 (비효율) | 인증 통과 후 중복 검사 수행 (자연스러운 흐름) |
+```java
+// 수정 후 코드
+@Transactional
+public void changePassword(long userId, UserChangePasswordRequest userChangePasswordRequest) {
+
+    User user = userRepository.findById(userId)
+            .orElseThrow(() -> new InvalidRequestException("User not found"));
+
+    // 1. 현재 비밀번호가 맞는지 먼저 확인 (기본 인증)
+    if (!passwordEncoder.matches(userChangePasswordRequest.getOldPassword(), user.getPassword())) {
+        throw new InvalidRequestException("잘못된 비밀번호입니다.");
+    }
+
+    // 2. 인증 통과 후, 새 비밀번호가 현재와 같은지 확인
+    if (passwordEncoder.matches(userChangePasswordRequest.getNewPassword(), user.getPassword())) {
+        throw new InvalidRequestException("새 비밀번호는 기존 비밀번호와 같을 수 없습니다.");
+    }
+
+    user.changePassword(passwordEncoder.encode(userChangePasswordRequest.getNewPassword()));
+}
+```
 ## 🚀 트러블슈팅: 댓글 삭제 API의 멱등성 및 예외 처리 개선
 
 ### 1. 문제 인식 (Issue)
@@ -213,8 +255,5 @@ public void deleteComment(long commentId) {
 ## Lv 7. 테스트 커버리지
 
 <!-- IntelliJ에서 Run with Coverage 실행 후 캡처한 이미지를 아래에 삽입하세요 -->
-
-![img.png](img.png)
-
-
+![img_1.png](img_1.png)
 
